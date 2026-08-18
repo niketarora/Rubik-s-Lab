@@ -27,12 +27,12 @@ export default {
         'accent-black': '#0F172A',
 
         // Cube Face Sticker Colors
-        'cube-yellow': '#FACC15',
+        'cube-yellow': '#FFD500',
         'cube-white': '#FFFFFF',
-        'cube-orange': '#F97316',
-        'cube-green': '#22C55E',
-        'cube-red': '#EF4444',
-        'cube-blue': '#3B82F6',
+        'cube-orange': '#FF5900',
+        'cube-green': '#00A638',
+        'cube-red': '#DC2626',
+        'cube-blue': '#0045FF',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],

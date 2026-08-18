@@ -3,12 +3,17 @@ import React from 'react';
 const LandingPagePreviewCube = ({ className = '' }) => {
   return (
     <div className={`flex flex-col items-center gap-4 ${className}`}>
-      {/* 2x2 grid of colors */}
-      <div className="w-[120px] h-[120px] rounded-lg overflow-hidden border border-subtle grid grid-cols-2 grid-rows-2">
-        <div className="bg-cube-yellow border-[0.5px] border-black/10"></div>
-        <div className="bg-cube-blue border-[0.5px] border-black/10"></div>
-        <div className="bg-cube-red border-[0.5px] border-black/10"></div>
-        <div className="bg-cube-green border-[0.5px] border-black/10"></div>
+      {/* Stylized 3x3 Cube Face Preview with rounded beveled stickers on dark plastic */}
+      <div className="w-[140px] h-[140px] rounded-2xl p-2 bg-[#0E1015] border border-slate-800 shadow-2xl grid grid-cols-3 grid-rows-3 gap-1.5">
+        <div className="bg-cube-blue rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-blue rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-blue rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-yellow rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-yellow rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-yellow rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-red rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-red rounded-[6px] shadow-sm"></div>
+        <div className="bg-cube-red rounded-[6px] shadow-sm"></div>
       </div>
       
       {/* Monospace Caption */}

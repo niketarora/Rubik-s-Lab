@@ -4,6 +4,8 @@ import Button from '../components/common/Button';
 import Input from '../components/common/Input';
 import Checkbox from '../components/common/Checkbox';
 import CubeNet2D from '../components/cube/CubeNet2D';
+import Cube3D from '../components/cube/Cube3D';
+import CubeViewToggle from '../components/cube/CubeViewToggle';
 import MoveToolbar from '../components/cube/MoveToolbar';
 import SolutionPlayer from '../components/cube/SolutionPlayer';
 import LogConsole from '../components/common/LogConsole';
@@ -14,7 +16,6 @@ import {
   generateRandomScramble,
   validateScrambleNotation
 } from '../utils/cube';
-import { MOCK_SOLVES, MOCK_TRACE_LOGS } from '../services/mockData';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { io } from 'socket.io-client';
@@ -41,7 +42,7 @@ const SolverWorkspace = () => {
   const [scrambleError, setScrambleError] = useState(null);
   
   // Solver settings
-  const [algorithm, setAlgorithm] = useState('IDA_STAR');
+  const [algorithm, setAlgorithm] = useState('TWO_PHASE');
   const [heuristic, setHeuristic] = useState('CORNER_EDGE_LOWER_BOUND');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [maxDepth, setMaxDepth] = useState(30);
@@ -63,6 +64,11 @@ const SolverWorkspace = () => {
   const [scrambledState, setScrambledState] = useState(SOLVED_STATE);
   const [replayStickers, setReplayStickers] = useState(null);
   const [isReplaying, setIsReplaying] = useState(false);
+
+  // 2D/3D visualizer states
+  const [viewMode, setViewMode] = useState('2D');
+  const [currentReplayStep, setCurrentReplayStep] = useState(0);
+  const [replaySpeed, setReplaySpeed] = useState(1);
 
   // Helper: push new state to history stack
   const updateCubeState = (nextState) => {
@@ -105,13 +111,21 @@ const SolverWorkspace = () => {
     setSolveStatus('IDLE');
     setSolveLogs([]);
     setIsReplaying(false);
+    setCurrentReplayStep(0);
   };
 
   // Scramble actions
-  const handleGenerateScramble = () => {
-    const scr = generateRandomScramble(20);
+  const handleGenerateScramble = (length = 6) => {
+    const scrambleLen = typeof length === 'number' ? length : 6;
+    const scr = generateRandomScramble(scrambleLen);
     setScrambleText(scr);
     setScrambleError(null);
+    const nextState = applyScramble(scr, SOLVED_STATE);
+    updateCubeState(nextState);
+    setSolution([]);
+    setResultMetrics(null);
+    setSolveStatus('IDLE');
+    setCurrentReplayStep(0);
   };
 
   const handleApplyScramble = () => {
@@ -126,39 +140,27 @@ const SolverWorkspace = () => {
     setSolution([]);
     setResultMetrics(null);
     setSolveStatus('IDLE');
+    setCurrentReplayStep(0);
   };
 
-  // Simulated Solve execution
+  // Combined scramble/reset for CubeNet2D quadrant icon
+  const handleScrambleReset = () => {
+    const isSolvedState = JSON.stringify(stickers) === JSON.stringify(SOLVED_STATE);
+    if (isSolvedState) {
+      handleGenerateScramble(6);
+    } else {
+      handleReset();
+    }
+  };
+
+  // Simulated Solve execution fallback
   const runMockSimulation = () => {
-    setTimeout(() => {
-      setSolveStatus('RUNNING');
-      setSolveLogs(prev => [
-        ...prev,
-        { id: 2, type: 'solve', message: `Executing ${algorithm} search with ${heuristic} (local offline simulation)...`, timestamp: new Date().toLocaleTimeString() },
-        { id: 3, type: 'info', message: 'Depth-first threshold search running...', timestamp: new Date().toLocaleTimeString() }
-      ]);
-
-      setTimeout(() => {
-        setSolving(false);
-        setSolveStatus('SOLVED');
-        
-        const mockSolve = MOCK_SOLVES[0];
-        setSolution(mockSolve.result.solution);
-        setResultMetrics({
-          length: mockSolve.result.solution_length,
-          generated: mockSolve.result.nodes_generated,
-          expanded: mockSolve.result.nodes_expanded,
-          pruned: mockSolve.result.nodes_pruned,
-          speed: '3.38k n/s',
-          memory: `${(mockSolve.result.peak_memory_bytes / 1000000).toFixed(2)} MB`
-        });
-
-        setScrambledState(stickers);
-        setReplayStickers(stickers);
-        setIsReplaying(true);
-        setSolveLogs(MOCK_TRACE_LOGS);
-      }, 1200);
-    }, 600);
+    setSolving(false);
+    setSolveStatus('FAILED');
+    setSolveLogs(prev => [
+      ...prev,
+      { id: Date.now(), type: 'error', message: 'Unable to connect to backend solver service. Please ensure the server is running on port 4000.', timestamp: new Date().toLocaleTimeString() }
+    ]);
   };
 
   const handleCancel = async () => {
@@ -191,14 +193,10 @@ const SolverWorkspace = () => {
     setSolveStatus('QUEUED');
     setSolution([]);
     setResultMetrics(null);
-    setSolveLogs([{ id: 1, type: 'info', message: 'Job initialized. Submitting solver request...', timestamp: new Date().toLocaleTimeString() }]);
+    setSolveLogs([{ id: 1, type: 'info', message: 'Job initialized. Submitting solver request to C++ engine...', timestamp: new Date().toLocaleTimeString() }]);
+    setCurrentReplayStep(0);
 
     const cubeStateStr = stickers.join('');
-
-    if (!user || user.role === 'guest') {
-      runMockSimulation();
-      return;
-    }
 
     try {
       const jobData = await api.submitSolve(cubeStateStr, {
@@ -211,6 +209,50 @@ const SolverWorkspace = () => {
 
       setCurrentJobId(jobData.jobId);
 
+      // Handle direct synchronous response from C++ solver
+      if (jobData.status === 'SOLVED') {
+        setSolving(false);
+        setSolveStatus('SOLVED');
+        setSolution(jobData.solution || []);
+        if (jobData.metrics) {
+          setResultMetrics({
+            length: jobData.solution ? jobData.solution.length : 0,
+            generated: jobData.metrics.nodesGenerated,
+            expanded: jobData.metrics.nodesExpanded,
+            pruned: jobData.metrics.nodesPruned,
+            speed: jobData.metrics.elapsedMs > 0 ? `${Math.round((jobData.metrics.nodesExpanded / jobData.metrics.elapsedMs) * 1000)} n/s` : 'N/A',
+            memory: `${((jobData.metrics.peakMemoryBytes || 0) / 1000000).toFixed(2)} MB`
+          });
+        }
+        if (jobData.trace && jobData.trace.length > 0) {
+          setSolveLogs(jobData.trace);
+        } else {
+          setSolveLogs(prev => [
+            ...prev,
+            { id: Date.now(), type: 'solve', message: `Search complete! Found ${jobData.solution?.length || 0}-move optimal solution in ${jobData.metrics?.elapsedMs || 0}ms.`, timestamp: new Date().toLocaleTimeString() }
+          ]);
+        }
+        setScrambledState(stickers);
+        setReplayStickers(stickers);
+        setIsReplaying(true);
+        return;
+      }
+
+      if (jobData.status === 'FAILED' || jobData.status === 'INVALID_STATE' || jobData.status === 'TIMEOUT') {
+        setSolving(false);
+        setSolveStatus(jobData.status);
+        if (jobData.trace && jobData.trace.length > 0) {
+          setSolveLogs(jobData.trace);
+        } else {
+          setSolveLogs(prev => [
+            ...prev,
+            { id: Date.now(), type: 'error', message: `Solver ended with status: ${jobData.status}`, timestamp: new Date().toLocaleTimeString() }
+          ]);
+        }
+        return;
+      }
+
+      // If job is queued in Redis, listen via Socket.IO
       const socketUrl = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace('/api/v1', '') : 'http://localhost:4000';
       const socket = io(socketUrl);
       window.activeSocket = socket;
@@ -226,15 +268,17 @@ const SolverWorkspace = () => {
         } else if (data.status === 'SOLVED') {
           setSolving(false);
           setSolveStatus('SOLVED');
-          setSolution(data.solution);
-          setResultMetrics({
-            length: data.solution.length,
-            generated: data.metrics.nodesGenerated,
-            expanded: data.metrics.nodesExpanded,
-            pruned: data.metrics.nodesPruned,
-            speed: data.metrics.elapsedMs > 0 ? `${Math.round((data.metrics.nodesExpanded / data.metrics.elapsedMs) * 1000)} n/s` : 'N/A',
-            memory: `${(data.metrics.peakMemoryBytes / 1000000).toFixed(2)} MB`
-          });
+          setSolution(data.solution || []);
+          if (data.metrics) {
+            setResultMetrics({
+              length: data.solution ? data.solution.length : 0,
+              generated: data.metrics.nodesGenerated,
+              expanded: data.metrics.nodesExpanded,
+              pruned: data.metrics.nodesPruned,
+              speed: data.metrics.elapsedMs > 0 ? `${Math.round((data.metrics.nodesExpanded / data.metrics.elapsedMs) * 1000)} n/s` : 'N/A',
+              memory: `${((data.metrics.peakMemoryBytes || 0) / 1000000).toFixed(2)} MB`
+            });
+          }
           if (data.trace) {
             setSolveLogs(data.trace);
           }
@@ -254,13 +298,24 @@ const SolverWorkspace = () => {
       });
 
     } catch (err) {
-      console.error('[SOLVER] Submission error, falling back to mock:', err);
-      runMockSimulation();
+      console.error('[SOLVER] Submission error:', err);
+      setSolving(false);
+      setSolveStatus('FAILED');
+      const isConnectionError = err.message.includes('Failed to fetch') || err.message.includes('NetworkError');
+      const displayMsg = isConnectionError
+        ? 'Cannot connect to backend server at http://localhost:4000. Please ensure the backend server is running ("npm start" in backend/).'
+        : `Solver error: ${err.message}`;
+
+      setSolveLogs(prev => [
+        ...prev,
+        { id: Date.now(), type: 'error', message: displayMsg, timestamp: new Date().toLocaleTimeString() }
+      ]);
     }
   };
 
   // Solution replay listener
   const handleReplayStep = (stepIndex) => {
+    setCurrentReplayStep(stepIndex);
     // stepIndex 0 means initial scrambled state
     if (stepIndex === 0) {
       setReplayStickers(scrambledState);
@@ -288,9 +343,52 @@ const SolverWorkspace = () => {
 
       {/* Main Grid: Left Net, Right Config */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left: Cube Net & Rotation Toolbar */}
+        {/* Left: Cube visualizer & Rotation Toolbar */}
         <div className="lg:col-span-7 flex flex-col gap-6">
-          <CubeNet2D stickers={isReplaying ? replayStickers : stickers} />
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-[12px] font-bold text-secondary uppercase font-sans tracking-wider leading-none">State View</h2>
+              <CubeViewToggle view={viewMode} onViewChange={setViewMode} />
+            </div>
+            
+            {viewMode === '2D' ? (
+              <div className="relative">
+                {isReplaying && solution.length > 0 && currentReplayStep > 0 && (
+                  <div className="absolute top-4 left-4 z-10 bg-accent-blue/95 backdrop-blur-sm text-on-dark font-mono font-extrabold text-[20px] px-3.5 py-1.5 rounded-btn shadow border border-white/10 select-none animate-pulse">
+                    Active: {solution[currentReplayStep - 1]}
+                  </div>
+                )}
+                <CubeNet2D
+                  stickers={isReplaying ? replayStickers : stickers}
+                  onScrambleReset={handleScrambleReset}
+                />
+              </div>
+            ) : (
+              <div className="flex flex-col border border-subtle bg-surface rounded-card p-6 relative gap-4">
+                <div className="flex items-center justify-between pb-2 border-b border-subtle">
+                  <h3 className="text-[15px] font-bold text-primary font-sans leading-none">
+                    3D Interactive View
+                  </h3>
+                  <span className="text-[11px] font-semibold text-secondary uppercase tracking-wider font-sans leading-none">
+                    Interactive orbit rotation
+                  </span>
+                </div>
+                <div className="relative">
+                  {isReplaying && solution.length > 0 && currentReplayStep > 0 && (
+                    <div className="absolute top-4 left-4 z-10 bg-accent-blue/95 backdrop-blur-sm text-on-dark font-mono font-extrabold text-[20px] px-3.5 py-1.5 rounded-btn shadow border border-white/10 select-none animate-pulse">
+                      Active: {solution[currentReplayStep - 1]}
+                    </div>
+                  )}
+                  <Cube3D
+                    stickers={isReplaying ? replayStickers : stickers}
+                    solution={solution}
+                    currentStep={currentReplayStep}
+                    speed={replaySpeed}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
           
           <MoveToolbar
             onMove={handleManualMove}
@@ -300,6 +398,16 @@ const SolverWorkspace = () => {
             canUndo={historyIdx > 0}
             canRedo={historyIdx < history.length - 1}
           />
+
+          {/* Solution Replay Panel moved to Left Column under manual controls to solve split-attention UX */}
+          {solution.length > 0 && (
+            <SolutionPlayer
+              solution={solution}
+              onStepChange={handleReplayStep}
+              cubeState={isReplaying ? replayStickers : stickers}
+              onSpeedChange={setReplaySpeed}
+            />
+          )}
         </div>
 
         {/* Right: Search Parameters */}
@@ -319,12 +427,20 @@ const SolverWorkspace = () => {
                   monospace
                   error={scrambleError}
                 />
-                <div className="grid grid-cols-2 gap-3 mt-1">
-                  <Button variant="secondary" onClick={handleGenerateScramble}>
-                    Generate Scramble
-                  </Button>
-                  <Button variant="secondary" onClick={handleApplyScramble}>
-                    Apply Scramble
+                <div className="flex flex-col gap-2 mt-1">
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button variant="secondary" onClick={() => handleGenerateScramble(6)} className="text-[12px] py-2 px-1">
+                      Quick (6 moves)
+                    </Button>
+                    <Button variant="secondary" onClick={() => handleGenerateScramble(10)} className="text-[12px] py-2 px-1">
+                      Medium (10)
+                    </Button>
+                    <Button variant="secondary" onClick={() => handleGenerateScramble(20)} className="text-[12px] py-2 px-1">
+                      Full (20 moves)
+                    </Button>
+                  </div>
+                  <Button variant="secondary" onClick={handleApplyScramble} className="w-full">
+                    Apply Scramble Sequence
                   </Button>
                 </div>
               </div>
@@ -339,10 +455,11 @@ const SolverWorkspace = () => {
                   onChange={(e) => setAlgorithm(e.target.value)}
                   className="bg-white border border-subtle rounded-btn py-[10px] px-[12px] text-[14px] text-primary focus-visible:outline-accent-blue"
                 >
-                  <option value="IDA_STAR">Korf's IDA* (Admissible & Optimal)</option>
-                  <option value="IDDFS">IDDFS (Optimal, Exponential Time)</option>
-                  <option value="BFS">Breadth-First Search (Shortest path, OOM risk)</option>
-                  <option value="DFS">Depth-First Search (Low memory, Non-optimal)</option>
+                  <option value="TWO_PHASE">Kociemba Two-Phase (Fast, Near-Optimal ~20ms)</option>
+                  <option value="IDA_STAR">Korf's IDA* (Optimal, Shortest Solution)</option>
+                  <option value="IDDFS">IDDFS (Iterative Deepening)</option>
+                  <option value="BFS">Breadth-First Search (Shortest path)</option>
+                  <option value="DFS">Depth-First Search (Fast tree exploration)</option>
                 </select>
               </div>
 
@@ -440,12 +557,7 @@ const SolverWorkspace = () => {
         </div>
       </div>
 
-      {/* Solution Replay Panel */}
-      <SolutionPlayer
-        solution={solution}
-        onStepChange={handleReplayStep}
-        cubeState={isReplaying ? replayStickers : stickers}
-      />
+      {/* Solution Replay Panel moved to left column */}
 
       {/* Telemetry Metrics strip */}
       {resultMetrics && (

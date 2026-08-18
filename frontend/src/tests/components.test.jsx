@@ -5,6 +5,7 @@ import Button from '../components/common/Button';
 import Card from '../components/common/Card';
 import StatusBadge from '../components/common/StatusBadge';
 import CubeNet2D from '../components/cube/CubeNet2D';
+import CubeViewToggle from '../components/cube/CubeViewToggle';
 import { SOLVED_STATE } from '../utils/cube';
 
 describe('Shared UI Components', () => {
@@ -80,7 +81,7 @@ describe('Shared UI Components', () => {
     it('renders the 2D cross layout grid net', () => {
       render(<CubeNet2D stickers={SOLVED_STATE} />);
       expect(screen.getByText('2D Cube Net Sticker Map')).toBeInTheDocument();
-      expect(screen.getByText('Flat sticker net projection')).toBeInTheDocument();
+      expect(screen.getByText('Flat projection')).toBeInTheDocument();
       
       // Verify face indicators are present
       expect(screen.getByText('U (Yellow)')).toBeInTheDocument();
@@ -89,6 +90,28 @@ describe('Shared UI Components', () => {
       expect(screen.getByText('R (Red)')).toBeInTheDocument();
       expect(screen.getByText('B (Blue)')).toBeInTheDocument();
       expect(screen.getByText('D (White)')).toBeInTheDocument();
+    });
+  });
+
+  describe('CubeViewToggle Component', () => {
+    it('renders 2D and 3D toggle options and highlights active', () => {
+      const handleToggle = vi.fn();
+      const { rerender } = render(<CubeViewToggle view="2D" onViewChange={handleToggle} />);
+      
+      const btn2D = screen.getByRole('button', { name: '2D Net' });
+      const btn3D = screen.getByRole('button', { name: '3D View' });
+      
+      expect(btn2D).toBeInTheDocument();
+      expect(btn3D).toBeInTheDocument();
+      expect(btn2D).toHaveClass('bg-white'); // Active state
+      expect(btn3D).not.toHaveClass('bg-white'); // Inactive state
+
+      fireEvent.click(btn3D);
+      expect(handleToggle).toHaveBeenCalledWith('3D');
+
+      rerender(<CubeViewToggle view="3D" onViewChange={handleToggle} />);
+      expect(btn3D).toHaveClass('bg-white');
+      expect(btn2D).not.toHaveClass('bg-white');
     });
   });
 });

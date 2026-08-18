@@ -69,7 +69,7 @@ export const api = {
         algorithm: options.algorithm || 'IDA_STAR',
         heuristic: options.heuristic || 'CORNER_EDGE_LOWER_BOUND',
         maxDepth: parseInt(options.maxDepth) || 30,
-        timeoutMs: (parseInt(options.timeoutMs) || 30) * 1000,
+        timeoutMs: Math.min(60000, parseInt(options.timeoutMs) > 1000 ? parseInt(options.timeoutMs) : ((parseInt(options.timeoutMs) || 30) * 1000)),
         collectTrace: options.collectTrace !== false
       })
     });

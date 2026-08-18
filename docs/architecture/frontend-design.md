@@ -77,7 +77,9 @@ All values below are best-fit hex approximations read from the screenshots. Trea
 
 ## 5. Layout & Spacing
 
-- **Navbar:** fixed height ~64px, white background, 1px bottom border (`border-subtle`), horizontal padding ~32px on desktop. Left: logo + wordmark + version tag stacked. Center: 4 nav links, evenly spaced, ~32px gap. Right: "Sign In" text link + black "Get Started" pill button (~8px radius), ~16px gap between them.
+- **Navbar:** fixed height ~64px, white background, soft drop shadow (`shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]`), horizontal padding ~32px on desktop. Left: logo + wordmark + version tag. Center: main navigation links centered relative to the viewport using a flexbox layout, with comfortable rounded capsule backgrounds on active/hover states. Right: Sign In + Get Started buttons (guests) or account controls/avatar dropdown (authenticated).
+  - *Guest Link Set (3 items):* Solve (`/solve`), Compare (`/compare`), Learn (`/docs`).
+  - *Authenticated Link Set (5 items):* Solve (`/solve`), Compare (`/compare`), Learn (`/docs`), Dashboard (`/dashboard`), History (`/history`) — plus an optional Admin (`/admin`) link for administrative accounts.
 - **Page container:** centered, max-width ~1440–1536px, horizontal padding ~40px, top padding ~40px below navbar.
 - **Cards:** white background, 1px `border-subtle`, 12px corner radius, padding 24px, no heavy drop shadow (flat/borderline-flat elevation).
 - **Grid patterns observed:**
@@ -151,12 +153,20 @@ Used for single-metric breakdowns (Dashboard "Heuristic Efficacy"): thick ring, 
 
 ## 7. Cube Visualization Component
 
-Two distinct renderings appear across the screens; both must be supported:
+The application supports both 2D projection and interactive 3D renderings:
 
 1. **Landing-page preview cube** (`Image 5`): a compact 2×2 grid of colored squares (yellow, blue, red, green) inside a bordered card, purely decorative, labeled underneath with "Initial State S_0 → Solved State G" in monospace, the arrow and "Solved State G" portion in `accent-green`.
-2. **Solver Workspace cube net** (`Image 9`): the full unfolded 3×3 sticker net in the classic cross layout — one 3×3 face on top (Yellow/U), a row of four 3×3 faces in the middle (Orange/L, Green/F, Red/R, Blue/B, left to right), and one 3×3 face on the bottom (White/D). Each sticker is a small square with a thin black border; faces are separated by whitespace, not touching. Labeled "2D Cube Net Sticker Map" with a small "Flat sticker net projection" tag top-right.
+2. **Solver Workspace cube net** (`Image 9`): the full unfolded 3×3 sticker net in the classic cross layout.
+   - *Sticker Style:* Tactile physical tile look with a thin, semi-transparent border (`border-[0.5px] border-black/35`), small gaps (`gap-[3px]`), and a dual inset shadow (`shadow-[inset_0_1.5px_2px_rgba(255,255,255,0.25),inset_0_-1.5px_2px_rgba(0,0,0,0.15)]`) to convey depth.
+   - *Scramble/Reset Icon:* A circular button in the top-left corner of the card rendered as a mini four-color quadrant icon (Red, Blue, Yellow, Green). Action generates a random scramble when solved or resets the cube to solved when scrambled.
+   - *Color Legend:* A vertical swatch legend panel stacked on the right edge of the card, showing one filled rounded-rectangle swatch for each of the six face colors (Yellow, Orange, Green, Red, Blue, White) labeled with their respective notations (U, L, F, R, B, D).
+3. **Solver Workspace 3D Cube View** [NEW]: An interactive, rotatable 3D model built using Three.js and React Three Fiber.
+   - *Controls:* Mouse/touch orbit controls (`OrbitControls` from `@react-three/drei`) allow the user to click and drag to view the cube from any angle.
+   - *Replay Animations:* During solution replay, each step triggers a smooth visual quarter/half-turn rotation animation of the corresponding face layer.
+   - *Speed Scaling:* The duration of the layer rotation animation scales dynamically to fit within the selected playback speed multiplier (e.g. 0.5x, 1x, 2x, 5x).
+   - *Reduced Motion Support:* Respects the system `prefers-reduced-motion` media query by instantly snapping layer positions instead of playing transition animations.
 
-Below the manual-rotation button row (`U D L R F B U' D' L' R' F' B'`, each its own small outline button in a horizontal row, monospace labels), render `Undo` / `Redo` / `Reset to Solved` as small colored text actions (orange "Undo", orange "Redo", blue "Reset to Solved").
+Below the visualization, a segmented view toggle ("2D Net" / "3D View") styled as a capsule control enables switching between the flat layout and the 3D model. Below the visualizer, the manual-rotation button row (`U D L R F B U' D' L' R' F' B'`, each its own small outline button in a horizontal row, monospace labels) allows manipulation, with `Undo` / `Redo` / `Reset` actions below it.
 
 ## 8. Page-by-Page Specs
 
@@ -202,7 +212,8 @@ Nav: "DSA Docs" active. Left sidebar: grouped nav under uppercase gray section h
 
 ## 9. Consistency Notes / Open Items for Engineering
 
-- The navbar's "Performance Dashboard" link appears active on three different screens (Dashboard, Benchmark Workspace, History) — confirm with product whether these are three routes under one nav item with sub-navigation, or whether "Performance Dashboard" should be split into distinct nav entries. Until resolved, implement as one active-state nav item covering all three routes.
+- The navbar's link set is now split based on authentication state rather than keeping a single active-link target for "Performance Dashboard" across different user roles. Guests are shown Solve/Compare/Learn, and authenticated users are shown Solve/Compare/Learn/Dashboard/History, resolving layout clutter and securing view paths cleanly.
+- The admin link is displayed conditional to the authenticated user holding an explicit `'admin'` role (case-insensitive in data layers).
 - Auth pages intentionally omit the navbar/footer chrome used everywhere else — do not add them.
 - Reduced-motion and keyboard-navigation requirements (PRD §9, TRD §13) apply on top of this visual spec: focus states should use a visible outline (e.g. 2px `accent-blue` ring) not shown in the static screenshots but required for accessibility compliance.
 - Every hex value in §3 is a best-fit reading from screenshots, not extracted from source CSS — treat as authoritative pending a design-token handoff file (Figma/Style Dictionary) if one becomes available.

@@ -134,11 +134,63 @@ void testSolvers() {
     assert_test(idaRes.solution.size() == 3, "IDA* finds optimal 3-move path");
 }
 
+#include "algorithms/TwoPhase.hpp"
+
+// Test Two-Phase solver
+void testTwoPhase() {
+    std::cout << "\n--- Running Two-Phase Solver Tests ---\n";
+
+    PieceCube solved = getSolvedCube();
+
+    // 1. Solved cube: should return in 0 moves
+    SolveOptions options;
+    options.timeoutMs = 5000;
+    options.collectTrace = false;
+
+    SolveResult zeroRes = runTwoPhase(solved, options);
+    assert_test(zeroRes.status == "SOLVED" && zeroRes.solution.empty(), "Two-Phase returns empty solution for solved cube");
+
+    // 2. Short scramble: R U R' F2
+    PieceCube shortCube = applyMove(solved, R);
+    shortCube = applyMove(shortCube, U);
+    shortCube = applyMove(shortCube, R_PRIME);
+    shortCube = applyMove(shortCube, F2);
+
+    SolveResult shortRes = runTwoPhase(shortCube, options);
+    assert_test(shortRes.status == "SOLVED", "Two-Phase solves short scramble");
+
+    // Verify solution by applying moves
+    PieceCube verifyCube = shortCube;
+    for (auto m : shortRes.solution) {
+        verifyCube = applyMove(verifyCube, m);
+    }
+    assert_test(verifyCube == solved, "Two-Phase short scramble solution reaches solved state");
+
+    // 3. Deep 20-move scramble
+    // Moves: U R2 F B R B2 R U2 L B2 R U' D' R2 F R' L B2 U2 F2
+    Move deepMoves[] = {U, R2, F, B, R, B2, R, U2, L, B2, R, U_PRIME, D_PRIME, R2, F, R_PRIME, L, B2, U2, F2};
+    PieceCube deepCube = solved;
+    for (auto m : deepMoves) {
+        deepCube = applyMove(deepCube, m);
+    }
+
+    SolveResult deepRes = runTwoPhase(deepCube, options);
+    assert_test(deepRes.status == "SOLVED", "Two-Phase solves deep 20-move scramble");
+    assert_test(deepRes.solution.size() <= 26, "Two-Phase produces near-optimal move length");
+
+    PieceCube verifyDeep = deepCube;
+    for (auto m : deepRes.solution) {
+        verifyDeep = applyMove(verifyDeep, m);
+    }
+    assert_test(verifyDeep == solved, "Two-Phase 20-move solution reaches solved state");
+}
+
 int main() {
     std::cout << "Starting C++ Unit Test Runner...\n";
     testMoveEngine();
     testValidation();
     testSolvers();
+    testTwoPhase();
     std::cout << "\n[ SUCCESS ] All C++ unit tests passed successfully!\n";
     return 0;
 }

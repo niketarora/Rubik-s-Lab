@@ -31,7 +31,7 @@ const applyMove = (move, state) => {
 
   for (let iter = 0; iter < iterations; iter++) {
     const prev = [...next];
-    
+
     switch (baseMove) {
       case 'U':
         rotateFaceCW(0, next);
@@ -51,32 +51,32 @@ const applyMove = (move, state) => {
 
       case 'F':
         rotateFaceCW(2, next);
-        next[27] = prev[8];  next[30] = prev[7];  next[33] = prev[6];  // R <- U
-        next[47] = prev[27]; next[46] = prev[30]; next[45] = prev[33]; // D <- R (reversed)
-        next[17] = prev[45]; next[14] = prev[46]; next[11] = prev[47]; // L <- D (reversed)
-        next[8] = prev[11];  next[7] = prev[14];  next[6] = prev[17];  // U <- L (reversed)
+        next[27] = prev[6];  next[30] = prev[7];  next[33] = prev[8];  // R <- U
+        next[47] = prev[27]; next[46] = prev[30]; next[45] = prev[33]; // D <- R
+        next[17] = prev[47]; next[14] = prev[46]; next[11] = prev[45]; // L <- D
+        next[6] = prev[17];  next[7] = prev[14];  next[8] = prev[11];  // U <- L
         break;
 
       case 'B':
         rotateFaceCW(4, next);
-        next[9] = prev[2];   next[12] = prev[1];   next[15] = prev[0];   // L <- U (reversed)
+        next[9] = prev[2];   next[12] = prev[1];   next[15] = prev[0];   // L <- U
         next[51] = prev[9];  next[52] = prev[12];  next[53] = prev[15];  // D <- L
-        next[35] = prev[53]; next[32] = prev[52];  next[29] = prev[51];  // R <- D (reversed)
-        next[2] = prev[35];  next[1] = prev[32];   next[0] = prev[29];   // U <- R (reversed)
+        next[35] = prev[51]; next[32] = prev[52];  next[29] = prev[53];  // R <- D
+        next[0] = prev[29];  next[1] = prev[32];   next[2] = prev[35];   // U <- R
         break;
 
       case 'L':
         rotateFaceCW(1, next);
         next[18] = prev[0];  next[21] = prev[3];  next[24] = prev[6];  // F <- U
         next[45] = prev[18]; next[48] = prev[21]; next[51] = prev[24]; // D <- F
-        next[44] = prev[51]; next[41] = prev[48]; next[38] = prev[45]; // B <- D (reversed)
-        next[0] = prev[38];  next[3] = prev[41];  next[6] = prev[44];  // U <- B
+        next[44] = prev[45]; next[41] = prev[48]; next[38] = prev[51]; // B <- D
+        next[6] = prev[38];  next[3] = prev[41];  next[0] = prev[44];  // U <- B
         break;
 
       case 'R':
         rotateFaceCW(3, next);
-        next[42] = prev[8];  next[39] = prev[5];  next[36] = prev[2];  // B <- U (reversed)
-        next[53] = prev[42]; next[50] = prev[39]; next[47] = prev[36]; // D <- B
+        next[36] = prev[8];  next[39] = prev[5];  next[42] = prev[2];  // B <- U
+        next[53] = prev[36]; next[50] = prev[39]; next[47] = prev[42]; // D <- B
         next[26] = prev[53]; next[23] = prev[50]; next[20] = prev[47]; // F <- D
         next[8] = prev[26];  next[5] = prev[23];  next[2] = prev[20];  // U <- F
         break;
@@ -97,10 +97,6 @@ const applyScramble = (scrambleStr, state = SOLVED_STATE) => {
     if (m) current = applyMove(m, current);
   }
   return current;
-};
-
-const isSolved = (state) => {
-  return state.every((color, idx) => color === SOLVED_STATE[idx]);
 };
 
 const generateRandomScramble = (length = 20) => {
@@ -126,7 +122,7 @@ const validateScrambleNotation = (scrambleStr) => {
   if (!scrambleStr || scrambleStr.trim() === '') return { valid: true, error: null };
   const tokens = scrambleStr.trim().split(/\s+/);
   const validRegex = /^[UDLRFB]['2]?$/;
-  
+
   for (const token of tokens) {
     if (!validRegex.test(token)) {
       return {
@@ -142,7 +138,6 @@ module.exports = {
   SOLVED_STATE,
   applyMove,
   applyScramble,
-  isSolved,
   generateRandomScramble,
   validateScrambleNotation
 };

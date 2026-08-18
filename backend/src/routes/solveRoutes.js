@@ -22,7 +22,7 @@ const scrambleSchema = zod.object({
 
 const solveJobSchema = zod.object({
   cubeState: zod.string().length(54),
-  algorithm: zod.enum(['BFS', 'DFS', 'IDDFS', 'IDA_STAR']),
+  algorithm: zod.enum(['BFS', 'DFS', 'IDDFS', 'IDA_STAR', 'TWO_PHASE']),
   heuristic: zod.enum(['NONE', 'MISPLACED_PIECES', 'CORNER_EDGE_LOWER_BOUND', 'PATTERN_DATABASE']).optional(),
   maxDepth: zod.number().min(0).max(50).optional(),
   timeoutMs: zod.number().min(1000).max(60000).optional(),
@@ -80,46 +80,98 @@ router.post('/scramble', optionalAuth, async (req, res, next) => {
   }
 });
 
-// 4. Submit single solve job (Requires Auth)
-router.post('/solve', requireAuth, async (req, res, next) => {
+// 4. Submit single solve job (Supports direct solver execution and queued jobs)
+router.post('/solve', optionalAuth, async (req, res, next) => {
   try {
     const body = solveJobSchema.parse(req.body);
-    const userId = req.user.id;
+    const userId = req.user ? req.user.id : null;
+    const jobId = 'job_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
 
-    // Create database entry first
-    const { data: job, error: dbError } = await supabase
-      .from('solve_jobs')
-      .insert({
+    // If Redis is configured and user is logged in, queue the job in background
+    if (userId && process.env.REDIS_URL) {
+      try {
+        const { data: job, error: dbError } = await supabase
+          .from('solve_jobs')
+          .insert({
+            user_id: userId,
+            cube_state: body.cubeState,
+            algorithm: body.algorithm,
+            heuristic: body.heuristic || 'NONE',
+            max_depth: body.maxDepth || 30,
+            timeout_ms: body.timeoutMs || 30000,
+            status: 'QUEUED'
+          })
+          .select()
+          .single();
+
+        if (!dbError && job) {
+          await solveQueue.add({
+            jobId: job.id,
+            cubeState: body.cubeState,
+            options: {
+              algorithm: body.algorithm,
+              heuristic: body.heuristic,
+              maxDepth: body.maxDepth,
+              timeoutMs: body.timeoutMs,
+              collectTrace: body.collectTrace !== false
+            }
+          });
+
+          return res.status(202).json({
+            jobId: job.id,
+            status: 'QUEUED',
+            createdAt: job.created_at
+          });
+        }
+      } catch (err) {
+        console.warn('[SOLVE] Queue failed, running direct solve:', err.message);
+      }
+    }
+
+    // Direct synchronous execution on the high-performance C++ solver
+    const result = await solveCube(jobId, body.cubeState, {
+      algorithm: body.algorithm,
+      heuristic: body.heuristic,
+      maxDepth: body.maxDepth,
+      timeoutMs: body.timeoutMs,
+      collectTrace: body.collectTrace !== false
+    });
+
+    if (userId) {
+      supabase.from('solve_jobs').insert({
+        id: jobId,
         user_id: userId,
         cube_state: body.cubeState,
         algorithm: body.algorithm,
         heuristic: body.heuristic || 'NONE',
         max_depth: body.maxDepth || 30,
         timeout_ms: body.timeoutMs || 30000,
-        status: 'QUEUED'
-      })
-      .select()
-      .single();
+        status: result.status,
+        completed_at: new Date().toISOString()
+      }).then(() => {
+        supabase.from('solve_results').insert({
+          job_id: jobId,
+          status: result.status,
+          solution: result.solution,
+          nodes_generated: result.metrics?.nodesGenerated || 0,
+          nodes_expanded: result.metrics?.nodesExpanded || 0,
+          nodes_pruned: result.metrics?.nodesPruned || 0,
+          duplicate_states: result.metrics?.duplicateStates || 0,
+          max_depth_reached: result.metrics?.maxDepthReached || 0,
+          threshold_iterations: result.metrics?.thresholdIterations || 0,
+          elapsed_ms: result.metrics?.elapsedMs || 0,
+          peak_memory_bytes: result.metrics?.peakMemoryBytes || 0,
+          trace_logs: result.trace || []
+        }).catch(err => console.warn('[SUPABASE] Background result save failed:', err.message));
+      }).catch(err => console.warn('[SUPABASE] Background job save failed:', err.message));
+    }
 
-    if (dbError) throw dbError;
-
-    // Add job to Redis queue
-    await solveQueue.add({
-      jobId: job.id,
-      cubeState: body.cubeState,
-      options: {
-        algorithm: body.algorithm,
-        heuristic: body.heuristic,
-        maxDepth: body.maxDepth,
-        timeoutMs: body.timeoutMs,
-        collectTrace: body.collectTrace !== false
-      }
-    });
-
-    res.status(202).json({
-      jobId: job.id,
-      status: 'QUEUED',
-      createdAt: job.created_at
+    res.status(200).json({
+      jobId: jobId,
+      status: result.status,
+      solution: result.solution,
+      metrics: result.metrics,
+      trace: result.trace
     });
 
   } catch (err) {

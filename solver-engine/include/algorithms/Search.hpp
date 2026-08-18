@@ -10,7 +10,8 @@ enum class SearchAlgorithm {
     BFS,
     DFS,
     IDDFS,
-    IDA_STAR
+    IDA_STAR,
+    TWO_PHASE
 };
 
 enum class HeuristicType {

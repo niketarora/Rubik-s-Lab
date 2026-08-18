@@ -8,10 +8,15 @@ const SolutionPlayer = ({
   onStepChange,  // Callback (stepIndex) => void, where stepIndex is 0 to solution.length (0 means initial scrambled state)
   cubeState,     // Current stickers array, used for final solved verification
   className = '',
+  onSpeedChange,
 }) => {
   const [currentStep, setCurrentStep] = useState(0); // 0 = start (scrambled state), 1 = after 1st move, etc.
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(1); // 1 = 1s per move, 2 = 0.5s, 0.5 = 2s
+  
+  useEffect(() => {
+    if (onSpeedChange) onSpeedChange(speed);
+  }, [onSpeedChange, speed]);
   const timerRef = useRef(null);
 
   const totalSteps = solution.length;

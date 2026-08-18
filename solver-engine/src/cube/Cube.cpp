@@ -36,12 +36,12 @@ const uint8_t EDGE_SOLVED_COLORS[12][2] = {
 const int CORNER_STICKERS[8][3] = {
     {6, 18, 11},  // 0: UFL
     {8, 20, 27},  // 1: UFR
-    {2, 38, 29},  // 2: UBR
-    {0, 36, 9},   // 3: UBL
+    {2, 36, 29},  // 2: UBR
+    {0, 38, 9},   // 3: UBL
     {45, 24, 17}, // 4: DFL
     {47, 26, 33}, // 5: DFR
-    {53, 44, 35}, // 6: DBR
-    {51, 42, 15}  // 7: DBL
+    {53, 42, 35}, // 6: DBR
+    {51, 44, 15}  // 7: DBL
 };
 
 // Sticker indexes of the 12 edges: Primary first, Secondary second
@@ -52,8 +52,8 @@ const int EDGE_STICKERS[12][2] = {
     {5, 28},  // 3: UR
     {21, 14}, // 4: FL
     {23, 30}, // 5: FR
-    {39, 12}, // 6: BL
-    {41, 32}, // 7: BR
+    {41, 12}, // 6: BL
+    {39, 32}, // 7: BR
     {46, 25}, // 8: DF
     {48, 16}, // 9: DL
     {52, 43}, // 10: DB
@@ -161,12 +161,17 @@ PieceCube stickersToPieces(const StickerCube& sc) {
         uint8_t c2 = sc.stickers[CORNER_STICKERS[i][2]]; // L/R
         uint8_t p = identifyCorner(c0, c1, c2);
         
-        // Orientation: which slot contains the U/D color of the piece
+        // Orientation: which slot contains the U/D color of the piece (accounting for corner chirality)
         uint8_t udColor = CORNER_SOLVED_COLORS[p][0];
         uint8_t ori = 0;
-        if (c0 == udColor) ori = 0;
-        else if (c1 == udColor) ori = 1;
-        else if (c2 == udColor) ori = 2;
+        bool isChiral = (i == 1 || i == 3 || i == 4 || i == 6);
+        if (c0 == udColor) {
+            ori = 0;
+        } else if (c1 == udColor) {
+            ori = isChiral ? 2 : 1;
+        } else if (c2 == udColor) {
+            ori = isChiral ? 1 : 2;
+        }
 
         pc.corners[i] = {p, ori};
     }
@@ -283,16 +288,16 @@ PieceCube applyBaseMove(const PieceCube& prev, Move base) {
     PieceCube next = prev;
     switch (base) {
         case U:
-            // Corners: UFL(0) -> UFR(1) -> UBR(2) -> UBL(3) -> UFL(0)
-            next.corners[1] = prev.corners[0];
-            next.corners[2] = prev.corners[1];
-            next.corners[3] = prev.corners[2];
-            next.corners[0] = prev.corners[3];
-            // Edges: UF(0) -> UR(3) -> UB(2) -> UL(1) -> UF(0)
-            next.edges[3] = prev.edges[0];
-            next.edges[2] = prev.edges[3];
-            next.edges[1] = prev.edges[2];
-            next.edges[0] = prev.edges[1];
+            // Corners: UFL(0) <- UFR(1) <- UBR(2) <- UBL(3) <- UFL(0)
+            next.corners[0] = prev.corners[1];
+            next.corners[3] = prev.corners[0];
+            next.corners[2] = prev.corners[3];
+            next.corners[1] = prev.corners[2];
+            // Edges: UF(0) <- UR(3) <- UB(2) <- UL(1) <- UF(0)
+            next.edges[0] = prev.edges[3];
+            next.edges[1] = prev.edges[0];
+            next.edges[2] = prev.edges[1];
+            next.edges[3] = prev.edges[2];
             break;
             
         case D:
@@ -309,11 +314,11 @@ PieceCube applyBaseMove(const PieceCube& prev, Move base) {
             break;
             
         case L:
-            // Corners: UBL(3) -> UFL(0) -> DFL(4) -> DBL(7) -> UBL(3)
-            next.corners[0] = prev.corners[3]; next.corners[0].orientation = (prev.corners[3].orientation + 1) % 3;
+            // Corners: UFL(0) -> DFL(4) -> DBL(7) -> UBL(3) -> UFL(0)
             next.corners[4] = prev.corners[0]; next.corners[4].orientation = (prev.corners[0].orientation + 2) % 3;
             next.corners[7] = prev.corners[4]; next.corners[7].orientation = (prev.corners[4].orientation + 1) % 3;
             next.corners[3] = prev.corners[7]; next.corners[3].orientation = (prev.corners[7].orientation + 2) % 3;
+            next.corners[0] = prev.corners[3]; next.corners[0].orientation = (prev.corners[3].orientation + 1) % 3;
             // Edges: UL(1) -> FL(4) -> DL(9) -> BL(6) -> UL(1)
             next.edges[4] = prev.edges[1];
             next.edges[9] = prev.edges[4];
