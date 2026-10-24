@@ -10,8 +10,7 @@ enum class SearchAlgorithm {
     BFS,
     DFS,
     IDDFS,
-    IDA_STAR,
-    TWO_PHASE
+    IDA_STAR
 };
 
 enum class HeuristicType {
@@ -26,7 +25,7 @@ struct SolveOptions {
     HeuristicType heuristic = HeuristicType::CORNER_EDGE_LOWER_BOUND;
     uint32_t maxDepth = 30;
     uint64_t timeoutMs = 30000;
-    uint64_t memoryLimitBytes = 50 * 1024 * 1024; // 50MB default
+    uint64_t memoryLimitBytes = 256 * 1024 * 1024; // 256MB default
     bool collectTrace = true;
     bool useTranspositionTable = true;
     bool enableMovePruning = true;

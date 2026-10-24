@@ -42,7 +42,7 @@ const SolverWorkspace = () => {
   const [scrambleError, setScrambleError] = useState(null);
   
   // Solver settings
-  const [algorithm, setAlgorithm] = useState('TWO_PHASE');
+  const [algorithm, setAlgorithm] = useState('IDA_STAR');
   const [heuristic, setHeuristic] = useState('CORNER_EDGE_LOWER_BOUND');
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [maxDepth, setMaxDepth] = useState(30);
@@ -238,15 +238,24 @@ const SolverWorkspace = () => {
         return;
       }
 
-      if (jobData.status === 'FAILED' || jobData.status === 'INVALID_STATE' || jobData.status === 'TIMEOUT') {
+      // If not queued in background Redis, handle any terminal status immediately
+      if (jobData.status !== 'QUEUED') {
         setSolving(false);
-        setSolveStatus(jobData.status);
+        setSolveStatus(jobData.status || 'FAILED');
         if (jobData.trace && jobData.trace.length > 0) {
           setSolveLogs(jobData.trace);
         } else {
+          let errorMsg = `Solver ended with status: ${jobData.status}`;
+          if (jobData.status === 'MEMORY_LIMIT') {
+            errorMsg = `Memory limit exceeded (50 MB). BFS generates O(b^d) states (>7.7M states at depth 6) which exhausts RAM. Switch to Korf's IDA* or IDDFS instead.`;
+          } else if (jobData.status === 'TIMEOUT') {
+            errorMsg = `Search timed out without finding a solution within the time limit. Try increasing the timeout or using IDA*.`;
+          } else if (jobData.status === 'INVALID_STATE') {
+            errorMsg = `Invalid cube state detected: ${jobData.message || 'The cube configuration is not solvable.'}`;
+          }
           setSolveLogs(prev => [
             ...prev,
-            { id: Date.now(), type: 'error', message: `Solver ended with status: ${jobData.status}`, timestamp: new Date().toLocaleTimeString() }
+            { id: Date.now(), type: 'error', message: errorMsg, timestamp: new Date().toLocaleTimeString() }
           ]);
         }
         return;
@@ -455,7 +464,6 @@ const SolverWorkspace = () => {
                   onChange={(e) => setAlgorithm(e.target.value)}
                   className="bg-white border border-subtle rounded-btn py-[10px] px-[12px] text-[14px] text-primary focus-visible:outline-accent-blue"
                 >
-                  <option value="TWO_PHASE">Kociemba Two-Phase (Fast, Near-Optimal ~20ms)</option>
                   <option value="IDA_STAR">Korf's IDA* (Optimal, Shortest Solution)</option>
                   <option value="IDDFS">IDDFS (Iterative Deepening)</option>
                   <option value="BFS">Breadth-First Search (Shortest path)</option>

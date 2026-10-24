@@ -22,7 +22,7 @@ const scrambleSchema = zod.object({
 
 const solveJobSchema = zod.object({
   cubeState: zod.string().length(54),
-  algorithm: zod.enum(['BFS', 'DFS', 'IDDFS', 'IDA_STAR', 'TWO_PHASE']),
+  algorithm: zod.enum(['BFS', 'DFS', 'IDDFS', 'IDA_STAR']),
   heuristic: zod.enum(['NONE', 'MISPLACED_PIECES', 'CORNER_EDGE_LOWER_BOUND', 'PATTERN_DATABASE']).optional(),
   maxDepth: zod.number().min(0).max(50).optional(),
   timeoutMs: zod.number().min(1000).max(60000).optional(),

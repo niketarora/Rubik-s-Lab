@@ -46,13 +46,6 @@ const LandingPage = () => {
       desc: "Depth-first search pruned by an admissible heuristic estimating remaining cost. The state-of-the-art for Rubik's Cube optimality.",
       meta: "Completeness: Yes | Space: O(d) | Optimal: Yes",
       color: "border-l-accent-green"
-    },
-    {
-      code: "Two-Phase",
-      name: "Kociemba's Two-Phase Reduction",
-      desc: "Decomposes the 43-quintillion state space into G0->G1 subgroups using pruning tables. Solves 20-move scrambles in milliseconds.",
-      meta: "Completeness: Yes | Space: O(1) Tables | Near-Optimal (<24 moves)",
-      color: "border-l-purple-500"
     }
   ];
 

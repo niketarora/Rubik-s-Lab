@@ -22,7 +22,6 @@ set(SOLVER_SOURCES
   src/algorithms/DFS.cpp
   src/algorithms/IDDFS.cpp
   src/algorithms/IDAStar.cpp
-  src/algorithms/TwoPhase.cpp
   src/heuristics/Heuristics.cpp
 )
 

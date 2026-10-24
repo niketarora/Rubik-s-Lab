@@ -14,6 +14,19 @@ static std::string getTimestamp() {
     return ss.str();
 }
 
+inline Move invertMove(Move m) {
+    int base = (m / 3) * 3;
+    int mod = m % 3;
+    if (mod == 0) return static_cast<Move>(base + 1);
+    if (mod == 1) return static_cast<Move>(base + 0);
+    return m; // mod == 2 is double turn, self-inverse
+}
+
+struct BFSNode {
+    CompactCube state;
+    Move lastMove;
+};
+
 SolveResult runBFS(const PieceCube& start, const SolveOptions& options) {
     SolveResult result;
     result.status = "FAILED";
@@ -31,27 +44,31 @@ SolveResult runBFS(const PieceCube& start, const SolveOptions& options) {
         return result;
     }
 
-    result.trace.push_back({getTimestamp(), "info", "Starting BFS search..."});
+    result.trace.push_back({getTimestamp(), "info", "Starting Breadth-First Search (Bidirectional BFS)..."});
 
-    // BFS queue
-    std::queue<CompactCube> q;
-    q.push(startCompact);
+    // Frontier queues for forward and backward search
+    std::queue<BFSNode> qFwd;
+    std::queue<BFSNode> qBwd;
 
-    // Map: current -> pair(parent, move_taken)
-    std::unordered_map<CompactCube, std::pair<CompactCube, Move>, CompactCubeHash> visited;
-    // For start node, parent is itself, move is dummy U (won't be read)
-    visited[startCompact] = {startCompact, U};
+    qFwd.push({startCompact, U});
+    qBwd.push({solvedCompact, U});
 
-    result.metrics.nodesGenerated = 1;
+    // Hash maps: state -> pair(parentState, moveTaken)
+    std::unordered_map<CompactCube, std::pair<CompactCube, Move>, CompactCubeHash> visitedFwd;
+    std::unordered_map<CompactCube, std::pair<CompactCube, Move>, CompactCubeHash> visitedBwd;
 
-    bool solved = false;
-    CompactCube finalSolvedNode;
+    visitedFwd[startCompact] = {startCompact, U};
+    visitedBwd[solvedCompact] = {solvedCompact, U};
 
+    result.metrics.nodesGenerated = 2;
+
+    CompactCube meetNode;
+    bool foundIntersection = false;
     uint64_t nodeCount = 0;
-    while (!q.empty()) {
+
+    while (!qFwd.empty() && !qBwd.empty()) {
         nodeCount++;
-        
-        // Timeout check every 1000 nodes
+
         if (nodeCount % 1000 == 0) {
             auto curTime = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(curTime - startTime).count();
@@ -62,8 +79,7 @@ SolveResult runBFS(const PieceCube& start, const SolveOptions& options) {
                 return result;
             }
 
-            // Memory limit check: estimate ~96 bytes per node in visited map + queue
-            uint64_t estMemory = (visited.size() + q.size()) * 96;
+            uint64_t estMemory = (visitedFwd.size() + visitedBwd.size() + qFwd.size() + qBwd.size()) * 96;
             result.metrics.peakMemoryBytes = std::max(result.metrics.peakMemoryBytes, estMemory);
             if (estMemory > options.memoryLimitBytes) {
                 result.status = "MEMORY_LIMIT";
@@ -73,23 +89,22 @@ SolveResult runBFS(const PieceCube& start, const SolveOptions& options) {
             }
         }
 
-        CompactCube currCompact = q.front();
-        q.pop();
+        // Expand from smaller frontier to minimize branching factor
+        bool expandFwd = qFwd.size() <= qBwd.size();
+
+        BFSNode curr = expandFwd ? qFwd.front() : qBwd.front();
+        if (expandFwd) qFwd.pop(); else qBwd.pop();
         result.metrics.nodesExpanded++;
 
-        PieceCube currPiece = compactToPieces(currCompact);
+        PieceCube currPiece = compactToPieces(curr.state);
 
-        // Try all 18 moves
         for (int m = 0; m < 18; ++m) {
             Move move = static_cast<Move>(m);
-            
-            // Move pruning logic: if parent move is inverse, skip it to reduce branching
-            if (options.enableMovePruning && currCompact == startCompact) {
-                // No parent yet, no pruning on root
-            } else if (options.enableMovePruning) {
-                auto parentInfo = visited[currCompact];
-                Move lastMove = parentInfo.second;
-                if (lastMove / 3 == move / 3) {
+
+            // Move pruning: no back-to-back moves on same face
+            if (options.enableMovePruning) {
+                bool isRoot = expandFwd ? (curr.state == startCompact) : (curr.state == solvedCompact);
+                if (!isRoot && (curr.lastMove / 3 == move / 3)) {
                     result.metrics.nodesPruned++;
                     continue;
                 }
@@ -99,51 +114,80 @@ SolveResult runBFS(const PieceCube& start, const SolveOptions& options) {
             CompactCube nextCompact = piecesToCompact(nextPiece);
             result.metrics.nodesGenerated++;
 
-            if (visited.find(nextCompact) != visited.end()) {
-                result.metrics.duplicateStates++;
-                continue;
-            }
+            if (expandFwd) {
+                if (visitedFwd.find(nextCompact) != visitedFwd.end()) {
+                    result.metrics.duplicateStates++;
+                    continue;
+                }
 
-            visited[nextCompact] = {currCompact, move};
-            
-            if (nextCompact == solvedCompact) {
-                solved = true;
-                finalSolvedNode = nextCompact;
-                break;
-            }
+                visitedFwd[nextCompact] = {curr.state, move};
 
-            q.push(nextCompact);
+                // Check meeting in backward visited
+                if (visitedBwd.find(nextCompact) != visitedBwd.end()) {
+                    meetNode = nextCompact;
+                    foundIntersection = true;
+                    break;
+                }
+
+                qFwd.push({nextCompact, move});
+            } else {
+                if (visitedBwd.find(nextCompact) != visitedBwd.end()) {
+                    result.metrics.duplicateStates++;
+                    continue;
+                }
+
+                visitedBwd[nextCompact] = {curr.state, move};
+
+                // Check meeting in forward visited
+                if (visitedFwd.find(nextCompact) != visitedFwd.end()) {
+                    meetNode = nextCompact;
+                    foundIntersection = true;
+                    break;
+                }
+
+                qBwd.push({nextCompact, move});
+            }
         }
 
-        if (solved) break;
+        if (foundIntersection) break;
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
     result.metrics.elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
-    
-    // Estimate final memory
-    uint64_t estMemory = (visited.size() + q.size()) * 96;
+    uint64_t estMemory = (visitedFwd.size() + visitedBwd.size() + qFwd.size() + qBwd.size()) * 96;
     result.metrics.peakMemoryBytes = std::max(result.metrics.peakMemoryBytes, estMemory);
 
-    if (solved) {
+    if (foundIntersection) {
         result.status = "SOLVED";
-        // Reconstruct path
-        std::vector<Move> path;
-        CompactCube curr = finalSolvedNode;
-        while (!(curr == startCompact)) {
-            auto parentInfo = visited[curr];
-            path.push_back(parentInfo.second);
-            curr = parentInfo.first;
+
+        // 1. Reconstruct forward path (start -> meetNode)
+        std::vector<Move> fwdPath;
+        CompactCube c = meetNode;
+        while (!(c == startCompact)) {
+            auto parentInfo = visitedFwd[c];
+            fwdPath.push_back(parentInfo.second);
+            c = parentInfo.first;
         }
-        std::reverse(path.begin(), path.end());
-        result.solution = path;
-        result.metrics.maxDepthReached = path.size();
-        
+        std::reverse(fwdPath.begin(), fwdPath.end());
+
+        // 2. Reconstruct backward path (meetNode -> solved)
+        std::vector<Move> bwdPath;
+        c = meetNode;
+        while (!(c == solvedCompact)) {
+            auto parentInfo = visitedBwd[c];
+            bwdPath.push_back(invertMove(parentInfo.second));
+            c = parentInfo.first;
+        }
+
+        result.solution = fwdPath;
+        result.solution.insert(result.solution.end(), bwdPath.begin(), bwdPath.end());
+        result.metrics.maxDepthReached = result.solution.size();
+
         std::stringstream ss;
-        ss << "BFS solved optimally in " << path.size() << " moves.";
+        ss << "BFS solved optimally in " << result.solution.size() << " moves (" << result.metrics.elapsedMs << "ms).";
         result.trace.push_back({getTimestamp(), "success", ss.str()});
-    } else {
-        result.trace.push_back({getTimestamp(), "error", "BFS queue exhausted. No solution exists."});
+    } else if (result.status != "MEMORY_LIMIT" && result.status != "TIMEOUT") {
+        result.trace.push_back({getTimestamp(), "error", "BFS queues exhausted. No solution exists."});
     }
 
     return result;

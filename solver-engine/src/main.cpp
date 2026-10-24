@@ -12,8 +12,6 @@
 #include <vector>
 #include <chrono>
 
-#include "algorithms/TwoPhase.hpp"
-
 using json = nlohmann::json;
 
 // Helper: map string to SearchAlgorithm
@@ -21,7 +19,6 @@ SearchAlgorithm parseAlgoStr(const std::string& s) {
     if (s == "BFS") return SearchAlgorithm::BFS;
     if (s == "DFS") return SearchAlgorithm::DFS;
     if (s == "IDDFS") return SearchAlgorithm::IDDFS;
-    if (s == "TWO_PHASE" || s == "KOCIEMBA") return SearchAlgorithm::TWO_PHASE;
     return SearchAlgorithm::IDA_STAR;
 }
 
@@ -59,6 +56,7 @@ void runDaemonMode() {
             std::string heurStr = req.value("heuristic", "CORNER_EDGE_LOWER_BOUND");
             uint32_t maxDepth = req.value("maxDepth", 30);
             uint64_t timeoutMs = req.value("timeoutMs", 30000);
+            uint64_t memoryLimitMb = req.value("memoryLimitMb", 256);
             bool collectTrace = req.value("collectTrace", true);
 
             // Parse state
@@ -100,6 +98,7 @@ void runDaemonMode() {
             options.heuristic = parseHeurStr(heurStr);
             options.maxDepth = maxDepth;
             options.timeoutMs = timeoutMs;
+            options.memoryLimitBytes = memoryLimitMb * 1024 * 1024;
             options.collectTrace = collectTrace;
 
             // Run search
@@ -110,18 +109,8 @@ void runDaemonMode() {
                 res = runDFS(pc, options);
             } else if (options.algorithm == SearchAlgorithm::IDDFS) {
                 res = runIDDFS(pc, options);
-            } else if (options.algorithm == SearchAlgorithm::TWO_PHASE) {
-                res = runTwoPhase(pc, options);
             } else {
                 res = runIDAStar(pc, options);
-                // If pure IDA* times out on a deep scramble, fallback to Two-Phase solver
-                if (res.status == "TIMEOUT" || res.status == "FAILED") {
-                    SolveResult fallbackRes = runTwoPhase(pc, options);
-                    if (fallbackRes.status == "SOLVED") {
-                        fallbackRes.trace.insert(fallbackRes.trace.begin(), res.trace.begin(), res.trace.end());
-                        res = fallbackRes;
-                    }
-                }
             }
 
             // Verify solution if solved
