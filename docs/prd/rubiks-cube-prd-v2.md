@@ -6,6 +6,12 @@
 **Date:** 2026-08-09  
 **Product:** Full-stack Rubik’s Cube solving, visualization, and benchmarking platform
 
+```bash
+cd solver-engine
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
 ## 1. Vision
 
 Build a polished web laboratory where users can enter or generate a 3×3 Rubik’s Cube scramble, solve it with BFS, DFS, IDDFS, or Korf’s IDA\*, watch the solution replay, and compare algorithm performance. The product must make the DSA visible: users should see the algorithm, heuristic, thresholds, nodes explored, nodes pruned, execution time, memory, and solution length.
